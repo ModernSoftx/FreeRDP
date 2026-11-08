@@ -1,0 +1,42 @@
+name: Tailscale Windows RDP
+
+on:
+  workflow_dispatch: # Is se aap manually run kar sakein ge
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360 # GitHub free tier par maximum 6 ghante limit hoti hai
+
+    steps:
+      - name: Enable Remote Desktop
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+      - name: Set Administrator Password
+        run: |
+          $Password = ConvertTo-SecureString "ApnaStrongPassword123!" -AsPlainText -Force
+          Set-LocalUser -Name "runneradmin" -Password $Password
+
+      - name: Download & Install Tailscale
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "tailscale-setup.exe"
+          Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/quiet" -Wait
+          $env:Path += ";C:\Program Files\Tailscale"
+
+      - name: Connect to Tailscale Network
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+        shell: powershell
+        run: |
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTHKEY --hostname="github-rdp" --accept-routes
+
+      - name: Keep Workflow Running
+        shell: powershell
+        run: |
+          Write-Host "RDP Active hai! Tailscale IP se connect karein."
+          # Workflow ko live rakhne ke liye loop (6 ghante tak)
+          Start-Sleep -Seconds 21600
